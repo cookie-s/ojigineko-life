@@ -2,15 +2,27 @@ use anyhow::Result; // TODO
 use chrono::{DateTime, Duration, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Ojigineko {
     is_sleeping: bool,
-    location: isize,
+    location: usize,
     gone: bool, // :cry:
     #[serde(with = "chrono::serde::ts_milliseconds")]
     updated_at: DateTime<Utc>,
     #[serde(skip)]
     activity: &'static str,
+}
+
+impl Default for Ojigineko {
+    fn default() -> Self {
+        Self {
+            is_sleeping: false,
+            location: 0,
+            gone: false,
+            updated_at: Utc::now(),
+            activity: "",
+        }
+    }
 }
 
 impl Ojigineko {
@@ -74,7 +86,8 @@ impl Ojigineko {
         }
 
         if !self.is_sleeping {
-            self.location = num::clamp(self.location + rng.gen_range(-2..=2), 0, 16);
+            self.location =
+                num::clamp(self.location as isize + rng.gen_range(-2..=2), 0, 16) as usize;
         }
 
         self.activity = if self.is_sleeping {
@@ -86,6 +99,7 @@ impl Ojigineko {
     }
 
     pub fn forward(&mut self, until: DateTime<Utc>) -> Option<()> {
+        println!("{:?}", self);
         let hr: Duration = Duration::hours(1); // FIXME const
 
         let mut cur = self.updated_at;
@@ -99,6 +113,11 @@ impl Ojigineko {
 
         res
     }
+
+    /// Call to_text only after `forward` returned `Some(_)`.
+    pub fn to_text(&self) -> String {
+        ":void:".repeat(self.location) + &format!(":{}:", self.activity)
+    }
 }
 
 pub struct Store {
@@ -108,7 +127,7 @@ pub struct Store {
 
 impl Store {
     pub fn new(path: std::path::PathBuf) -> Result<Self> {
-        let ojigineko = Self::load(&path)?;
+        let ojigineko = Self::load(&path).unwrap_or_default(); // TODO errors other than NoSuchFile
         Ok(Self { path, ojigineko })
     }
 
@@ -133,7 +152,7 @@ impl Drop for Store {
             use std::fs::File;
             use std::io::BufWriter;
 
-            let file = File::open(&self.path)?;
+            let file = File::create(&self.path)?;
             let w = BufWriter::new(file);
 
             Ok(serde_json::to_writer(w, &self.ojigineko)?)
